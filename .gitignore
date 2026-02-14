@@ -1,0 +1,32 @@
+# Python virtual environments
+.venv/
+venv/
+env/
+**/.venv/
+**/venv/
+**/env/
+
+# Virtualenv metadata
+pip-wheel-metadata/
+**/pip-wheel-metadata/
+pyvenv.cfg
+**/pyvenv.cfg
+
+# Python cache and compiled files
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution artifacts
+dist/
+**/dist/
+build/
+**/build/
+node_modules/
+**/node_modules/
+browser-tools-server/node_modules/
+browser-tools-mcp/node_modules/
+chrome-extension/node_modules/
+*.egg-info/
+**/*.egg-info/

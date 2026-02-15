@@ -65,30 +65,23 @@ GET /health
 ```
 
 Returns server status, uptime, active sessions, memory usage.
+Returns server status, uptime, memory usage.
 
 ### MCP Protocol
 ```
-POST /mcp       # Client-to-server JSON-RPC messages
-GET /mcp        # SSE stream for server-to-client notifications
-DELETE /mcp     # Terminate session
+POST /mcp       # JSON-RPC messages (initialize, tools/list, tools/call, etc.)
+GET /mcp        # Optional SSE stream (client-dependent)
 ```
 
-All MCP endpoints require `Mcp-Session-Id` header (except initial initialize request).
+This server is **sessionless**. Clients do not need to store or send `Mcp-Session-Id`.
 
 ## 🏗️ Architecture
 
 ### Session Management
-- Each client gets a unique session ID (UUID)
-- Sessions store:
-  - MCP server instance
-  - Transport instance
-  - User configuration (API keys, URLs)
-- Sessions are **in-memory** (lost on restart)
+This server is sessionless and does not store per-client state.
 
 ### Multi-User Support
-- Multiple concurrent users supported
-- Each user has isolated session with own config
-- Configuration passed via HTTP headers per session
+Multiple concurrent users supported. Configuration is passed via HTTP headers per request.
 
 ## 🌐 Deployment
 
@@ -157,22 +150,18 @@ curl -X POST http://localhost:3100/mcp \
     }
   }' -i
 
-# 3. Save the Mcp-Session-Id from response headers
-
-# 4. List available tools
+# 3. List available tools
 curl -X POST http://localhost:3100/mcp \
   -H "Content-Type: application/json" \
-  -H "Mcp-Session-Id: <your-session-id>" \
   -d '{
     "jsonrpc": "2.0",
     "id": 2,
     "method": "tools/list"
   }'
 
-# 5. Call OpenAPI search tool
+# 4. Call OpenAPI search tool
 curl -X POST http://localhost:3100/mcp \
   -H "Content-Type: application/json" \
-  -H "Mcp-Session-Id: <your-session-id>" \
   -d '{
     "jsonrpc": "2.0",
     "id": 3,

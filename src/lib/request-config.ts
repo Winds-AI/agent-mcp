@@ -12,7 +12,7 @@ export function getHeader(headers: HeaderRecord | undefined, key: string): strin
   return cleanHeaderValue(headers[key.toLowerCase()]);
 }
 
-export function extractSessionConfigFromHeaders(
+export function extractRequestConfigFromHeaders(
   headers: HeaderRecord | undefined,
   env: NodeJS.ProcessEnv = process.env
 ): SessionConfig {
@@ -39,12 +39,12 @@ export function extractHeadersFromToolExtra(extra: unknown): HeaderRecord | unde
   return (extra as any)?.requestInfo?.headers as HeaderRecord | undefined;
 }
 
-export function extractSessionConfigFromToolExtra(
+export function extractRequestConfigFromToolExtra(
   extra: unknown,
   defaults: SessionConfig
 ): SessionConfig {
   const headers = extractHeadersFromToolExtra(extra);
-  const fromHeaders = extractSessionConfigFromHeaders(headers);
+  const fromHeaders = extractRequestConfigFromHeaders(headers);
 
   return {
     swaggerApiJson: fromHeaders.swaggerApiJson ?? defaults.swaggerApiJson,

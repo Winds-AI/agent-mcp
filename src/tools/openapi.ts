@@ -7,7 +7,7 @@ import {
   collectPathMatches,
 } from "../lib/swagger-parser.js";
 import { formatSearchResultAsMarkdown } from "../lib/formatting.js";
-import { extractSessionConfigFromToolExtra } from "../lib/session-config.js";
+import { extractRequestConfigFromToolExtra } from "../lib/request-config.js";
 
 const OPENAPI_SEARCH_ENDPOINTS_DESCRIPTION =
   'Default discovery tool for API related tasks. Trigger: when a request mentions "API integration", "changes in API logic/response", "correct field names", or "validations." Searches through OpenAPI JSON of the backend and consults a per-project integration guide at PROJECT_INTEGRATION_GUIDE to infer stack and code patterns (routing, data fetching, forms, file layout, auth). Returns canonical operations (path, method, operationId, parameters, requestBody schemas, response schemas, examples) plus integrationHints derived from the guide (e.g., where to place services/hooks, file/alias conventions, preferred validation). Use the results to make real requests via .agent/api.sh and generate project-conformant code that follows the code patterns and structure of the current repo.';
@@ -139,7 +139,7 @@ export function registerOpenApiTool(
     },
     async ({ path: pathFilter }, extra) => {
       try {
-        const cfg = extractSessionConfigFromToolExtra(extra, defaults);
+        const cfg = extractRequestConfigFromToolExtra(extra, defaults);
           const swaggerUrl = cfg.swaggerApiJson;
           if (!swaggerUrl) {
             throw new Error(

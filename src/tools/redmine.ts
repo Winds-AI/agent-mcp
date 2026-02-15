@@ -12,7 +12,7 @@ import {
   fetchAndCompressAttachment,
 } from "../lib/redmine-client.js";
 import { truncateText } from "../lib/formatting.js";
-import { extractSessionConfigFromToolExtra } from "../lib/session-config.js";
+import { extractRequestConfigFromToolExtra } from "../lib/request-config.js";
 
 export function registerRedmineTool(
   server: McpServer,
@@ -74,7 +74,7 @@ export function registerRedmineTool(
     },
     async ({ issueId }, extra) => {
       try {
-        const cfg = extractSessionConfigFromToolExtra(extra, defaults);
+        const cfg = extractRequestConfigFromToolExtra(extra, defaults);
         const baseUrlRaw = cfg.redmineBaseUrl;
         const apiKey = cfg.redmineApiKey;
         const configuredProject = cfg.redmineProjectId;

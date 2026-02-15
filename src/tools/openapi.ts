@@ -7,6 +7,7 @@ import {
   collectPathMatches,
 } from "../lib/swagger-parser.js";
 import { formatSearchResultAsMarkdown } from "../lib/formatting.js";
+import { extractSessionConfigFromToolExtra } from "../lib/session-config.js";
 
 const OPENAPI_SEARCH_ENDPOINTS_DESCRIPTION =
   'Default discovery tool for API related tasks. Trigger: when a request mentions "API integration", "changes in API logic/response", "correct field names", or "validations." Searches through OpenAPI JSON of the backend and consults a per-project integration guide at PROJECT_INTEGRATION_GUIDE to infer stack and code patterns (routing, data fetching, forms, file layout, auth). Returns canonical operations (path, method, operationId, parameters, requestBody schemas, response schemas, examples) plus integrationHints derived from the guide (e.g., where to place services/hooks, file/alias conventions, preferred validation). Use the results to make real requests via .agent/api.sh and generate project-conformant code that follows the code patterns and structure of the current repo.';
@@ -52,9 +53,8 @@ export function registerOpenApiTool(
   server: McpServer,
   config: SessionConfig
 ) {
-  if (!config.swaggerApiJson) return;
-
-  const loader = createSwaggerLoader(config.swaggerApiJson);
+  const defaults = config;
+  const loaders = new Map<string, ReturnType<typeof createSwaggerLoader>>();
 
   server.registerTool(
     "openapi_searchEndpoints",
@@ -137,8 +137,22 @@ export function registerOpenApiTool(
         ),
       },
     },
-    async ({ path: pathFilter }) => {
+    async ({ path: pathFilter }, extra) => {
       try {
+        const cfg = extractSessionConfigFromToolExtra(extra, defaults);
+        const swaggerUrl = cfg.swaggerApiJson;
+        if (!swaggerUrl) {
+          throw new Error(
+            "Missing OpenAPI URL. Provide OPENAPI_JSON header (or configure OPENAPI_JSON on the server)."
+          );
+        }
+
+        let loader = loaders.get(swaggerUrl);
+        if (!loader) {
+          loader = createSwaggerLoader(swaggerUrl);
+          loaders.set(swaggerUrl, loader);
+        }
+
         const doc = await loader.getDocument();
         const metadata = loader.computeMetadata(doc);
         const matches = collectPathMatches(doc, pathFilter);

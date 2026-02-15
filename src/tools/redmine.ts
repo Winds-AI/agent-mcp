@@ -12,18 +12,13 @@ import {
   fetchAndCompressAttachment,
 } from "../lib/redmine-client.js";
 import { truncateText } from "../lib/formatting.js";
+import { extractSessionConfigFromToolExtra } from "../lib/session-config.js";
 
 export function registerRedmineTool(
   server: McpServer,
   config: SessionConfig
 ) {
-  if (!config.redmineBaseUrl || !config.redmineApiKey || !config.redmineProjectId) {
-    return;
-  }
-
-  const baseUrl = normalizeBaseUrl(config.redmineBaseUrl);
-  const apiKey = config.redmineApiKey;
-  const configuredProject = config.redmineProjectId;
+  const defaults = config;
 
   server.registerTool(
     "redmine_getIssue",
@@ -77,8 +72,21 @@ export function registerRedmineTool(
         ),
       },
     },
-    async ({ issueId }) => {
+    async ({ issueId }, extra) => {
       try {
+        const cfg = extractSessionConfigFromToolExtra(extra, defaults);
+        const baseUrlRaw = cfg.redmineBaseUrl;
+        const apiKey = cfg.redmineApiKey;
+        const configuredProject = cfg.redmineProjectId;
+
+        if (!baseUrlRaw || !apiKey || !configuredProject) {
+          throw new Error(
+            "Missing Redmine config. Provide REDMINE_URL, REDMINE_API, and REDMINE_PROJECT headers."
+          );
+        }
+
+        const baseUrl = normalizeBaseUrl(baseUrlRaw);
+
         const normalizedIssueId = issueId.trim().replace(/^#/, "");
         if (!normalizedIssueId) {
           throw new Error("Issue ID is required.");

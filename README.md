@@ -39,13 +39,13 @@ curl http://localhost:3100/health
 #### 1. OpenAPI Search (`openapi_searchEndpoints`)
 Search through OpenAPI/Swagger documentation for API endpoints.
 
-**Configuration:** Pass `x-swagger-api-json` header with URL to OpenAPI JSON
+**Configuration:** Pass `OPENAPI-JSON` header with URL to OpenAPI JSON
 
 **Example:**
 ```bash
 curl -X POST http://localhost:3100/mcp \
   -H "Content-Type: application/json" \
-  -H "x-swagger-api-json: https://petstore3.swagger.io/api/v3/openapi.json" \
+  -H "OPENAPI-JSON: https://petstore3.swagger.io/api/v3/openapi.json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}'
 ```
 
@@ -53,9 +53,9 @@ curl -X POST http://localhost:3100/mcp \
 Fetch Redmine issues with attachments and custom fields.
 
 **Configuration:** Pass these headers:
-- `x-redmine-base-url`: Your Redmine instance URL
-- `x-redmine-api-key`: Your Redmine API key
-- `x-redmine-project-id`: Project ID to scope issues
+- `REDMINE-URL`: Your Redmine instance URL
+- `REDMINE-API`: Your Redmine API key
+- `REDMINE-PROJECT`: Project ID to scope issues
 
 ## 📡 API Endpoints
 
@@ -109,10 +109,10 @@ NODE_ENV=production    # Environment
 
 ### Per-Session Configuration (via HTTP headers)
 ```
-x-redmine-api-key: <your-api-key>
-x-redmine-base-url: https://redmine.example.com
-x-redmine-project-id: <project-id>
-x-swagger-api-json: https://api.example.com/openapi.json
+REDMINE-API: <your-api-key>
+REDMINE-URL: https://redmine.example.com
+REDMINE-PROJECT: <project-id>
+OPENAPI-JSON: https://api.example.com/openapi.json
 ```
 
 ## 📦 Dependencies
@@ -145,7 +145,7 @@ pnpm start
 # 2. Initialize session with OpenAPI config
 curl -X POST http://localhost:3100/mcp \
   -H "Content-Type: application/json" \
-  -H "x-swagger-api-json: https://petstore3.swagger.io/api/v3/openapi.json" \
+  -H "OPENAPI-JSON: https://petstore3.swagger.io/api/v3/openapi.json" \
   -d '{
     "jsonrpc": "2.0",
     "id": 1,

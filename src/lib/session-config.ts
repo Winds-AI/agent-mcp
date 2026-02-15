@@ -17,15 +17,15 @@ export function extractSessionConfigFromHeaders(
   env: NodeJS.ProcessEnv = process.env
 ): SessionConfig {
   // Header keys are case-insensitive; Node lowercases them in req.headers.
-  // We intentionally accept only the new names.
-  const swaggerApiJson = getHeader(headers, "OPENAPI_JSON") ?? env.OPENAPI_JSON;
+  // Only accept hyphenated headers (underscores are commonly dropped by proxies).
+  const swaggerApiJson = getHeader(headers, "OPENAPI-JSON") ?? env.OPENAPI_JSON;
 
-  const redmineBaseUrl = getHeader(headers, "REDMINE_URL") ?? env.REDMINE_URL;
+  const redmineBaseUrl = getHeader(headers, "REDMINE-URL") ?? env.REDMINE_URL;
 
-  const redmineApiKey = getHeader(headers, "REDMINE_API") ?? env.REDMINE_API;
+  const redmineApiKey = getHeader(headers, "REDMINE-API") ?? env.REDMINE_API;
 
   const redmineProjectId =
-    getHeader(headers, "REDMINE_PROJECT") ?? env.REDMINE_PROJECT;
+    getHeader(headers, "REDMINE-PROJECT") ?? env.REDMINE_PROJECT;
 
   return {
     swaggerApiJson,

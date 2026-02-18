@@ -92,7 +92,7 @@ export function registerRedmineTool(
 
         if (!baseUrlRaw || !apiKey || !configuredProject) {
           throw new Error(
-            "Missing Redmine config. Provide REDMINE-URL, REDMINE-API, and REDMINE-PROJECT headers."
+            "Missing Redmine config. Provide REDMINE_URL, REDMINE_API, and REDMINE_PROJECT."
           );
         }
 

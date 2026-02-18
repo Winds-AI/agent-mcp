@@ -27,36 +27,34 @@ curl http://localhost:3100/health
 
 ## 🛠️ Features
 
-### Transport Type: HTTP (Not Stdio)
-- ✅ **HTTP REST API** with Express.js
-- ✅ **StreamableHTTPServerTransport** from MCP SDK
-- ✅ **Server-Sent Events (SSE)** for server-to-client notifications
-- ✅ **Multi-user session management** via `Mcp-Session-Id` header
-- ❌ **NOT stdio-based** (doesn't use stdin/stdout)
+### Transport Types
+- ✅ **HTTP** via Express + `StreamableHTTPServerTransport` (`/mcp`)
+- ✅ **stdio** via `StdioServerTransport` (`MCP_TRANSPORT=stdio`)
+- ✅ **Sessionless** request handling for HTTP
 
 ### Tools Provided
 
 #### 1. OpenAPI Search (`openapi_searchEndpoints`)
 Search through OpenAPI/Swagger documentation for API endpoints.
 
-**Configuration:** Pass `OPENAPI-JSON` header with URL to OpenAPI JSON
+**Configuration:** Pass `OPENAPI_JSON`
 
 **Example:**
 ```bash
 curl -X POST http://localhost:3100/mcp \
   -H "Content-Type: application/json" \
-  -H "OPENAPI-JSON: https://petstore3.swagger.io/api/v3/openapi.json" \
+  -H "OPENAPI_JSON: https://petstore3.swagger.io/api/v3/openapi.json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}'
 ```
 
 #### 2. Redmine Issue Fetcher (`redmine_getIssue`)
 Fetch Redmine issues with attachments and custom fields.
 
-**Configuration:** Pass these headers:
-- `REDMINE-URL`: Your Redmine instance URL
-- `REDMINE-API`: Your Redmine API key
-- `REDMINE-PROJECT`: Project ID to scope issues
-- `REDMINE-IMAGE-CACHE-DIR` (optional): Local directory where description images are cached for reuse
+**Configuration:** Pass these keys:
+- `REDMINE_URL`: Your Redmine instance URL
+- `REDMINE_API`: Your Redmine API key
+- `REDMINE_PROJECT`: Project ID to scope issues
+- `REDMINE_IMAGE_CACHE_DIR` (optional): Local directory where description images are cached for reuse
 
 ## 📡 API Endpoints
 
@@ -65,7 +63,6 @@ Fetch Redmine issues with attachments and custom fields.
 GET /health
 ```
 
-Returns server status, uptime, active sessions, memory usage.
 Returns server status, uptime, memory usage.
 
 ### MCP Protocol
@@ -99,16 +96,21 @@ See [DEPLOYMENT.md](./DEPLOYMENT.md) for detailed guides.
 ```bash
 PORT=3100                           # Server port (default: 3100)
 NODE_ENV=production                 # Environment
+MCP_TRANSPORT=http                  # "http" (default) or "stdio"
+OPENAPI_JSON=http://localhost:8000/openapi.json
+REDMINE_URL=https://redmine.example.com
+REDMINE_API=<your-api-key>
+REDMINE_PROJECT=<project-id>
 REDMINE_IMAGE_CACHE_DIR=/tmp/remake-mcp/redmine-images  # Optional Redmine image cache directory
 ```
 
 ### Per-Session Configuration (via HTTP headers)
 ```
-REDMINE-API: <your-api-key>
-REDMINE-URL: https://redmine.example.com
-REDMINE-PROJECT: <project-id>
-REDMINE-IMAGE-CACHE-DIR: /tmp/remake-mcp/redmine-images
-OPENAPI-JSON: https://api.example.com/openapi.json
+REDMINE_API: <your-api-key>
+REDMINE_URL: https://redmine.example.com
+REDMINE_PROJECT: <project-id>
+REDMINE_IMAGE_CACHE_DIR: /tmp/remake-mcp/redmine-images
+OPENAPI_JSON: https://api.example.com/openapi.json
 ```
 
 ## 📦 Dependencies
@@ -140,7 +142,7 @@ pnpm start
 # 2. Initialize session with OpenAPI config
 curl -X POST http://localhost:3100/mcp \
   -H "Content-Type: application/json" \
-  -H "OPENAPI-JSON: https://petstore3.swagger.io/api/v3/openapi.json" \
+  -H "OPENAPI_JSON: https://petstore3.swagger.io/api/v3/openapi.json" \
   -d '{
     "jsonrpc": "2.0",
     "id": 1,

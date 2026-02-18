@@ -140,12 +140,12 @@ export function registerOpenApiTool(
     async ({ path: pathFilter }, extra) => {
       try {
         const cfg = extractRequestConfigFromToolExtra(extra, defaults);
-          const swaggerUrl = cfg.swaggerApiJson;
-          if (!swaggerUrl) {
-            throw new Error(
-            "Missing OpenAPI URL. Provide OPENAPI-JSON header (or configure OPENAPI_JSON on the server)."
-            );
-          }
+        const swaggerUrl = cfg.swaggerApiJson;
+        if (!swaggerUrl) {
+          throw new Error(
+            "Missing OpenAPI URL. Provide OPENAPI_JSON or configure OPENAPI_JSON on the server."
+          );
+        }
 
         let loader = loaders.get(swaggerUrl);
         if (!loader) {

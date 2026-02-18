@@ -177,6 +177,7 @@ export interface RedmineAttachment {
   filename: string;
   filesize: number;
   content_url: string;
+  content_type?: string;
   author?: { id: number; name: string };
   created_on?: string;
 }

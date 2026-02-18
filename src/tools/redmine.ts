@@ -9,7 +9,6 @@ import {
   extractDescriptionImageHints,
   matchDescriptionAttachments,
   fetchRedmineIssue,
-  fetchAndCompressAttachment,
 } from "../lib/redmine-client.js";
 import { truncateText } from "../lib/formatting.js";
 import { extractRequestConfigFromToolExtra } from "../lib/request-config.js";
@@ -25,7 +24,7 @@ export function registerRedmineTool(
     {
       title: "Get Redmine Issue",
       description:
-        "Fetch a Redmine issue by ID, scoped to the configured project. Returns core fields, selected custom fields, description images as base64 WebP, and remaining attachments.",
+        "Fetch a Redmine issue by ID, scoped to the configured project. Returns core fields, selected custom fields, description image references, and remaining attachments.",
       inputSchema: {
         issueId: z
           .string()
@@ -56,8 +55,11 @@ export function registerRedmineTool(
           z.object({
             id: z.number(),
             filename: z.string(),
-            mime: z.literal("image/webp"),
-            base64: z.string(),
+            size: z.number(),
+            author: z.string(),
+            created_on: z.string().optional(),
+            content_type: z.string().optional(),
+            content_url: z.string(),
           })
         ),
         attachments: z.array(
@@ -67,6 +69,7 @@ export function registerRedmineTool(
             size: z.number(),
             author: z.string(),
             created_on: z.string().optional(),
+            content_type: z.string().optional(),
             content_url: z.string(),
           })
         ),
@@ -106,21 +109,15 @@ export function registerRedmineTool(
           imageHints
         );
 
-        const descriptionImages: Array<{
-          id: number;
-          filename: string;
-          mime: "image/webp";
-          base64: string;
-        }> = [];
-        for (const attachment of matchResult.matched) {
-          const base64 = await fetchAndCompressAttachment(attachment, apiKey);
-          descriptionImages.push({
-            id: attachment.id,
-            filename: attachment.filename,
-            mime: "image/webp" as const,
-            base64,
-          });
-        }
+        const descriptionImages = matchResult.matched.map((attachment) => ({
+          id: attachment.id,
+          filename: attachment.filename,
+          size: attachment.filesize,
+          author: attachment.author?.name ?? "Unknown",
+          created_on: attachment.created_on,
+          content_type: attachment.content_type,
+          content_url: attachment.content_url,
+        }));
 
         const remainingAttachments = (issue.attachments ?? [])
           .filter(
@@ -133,6 +130,7 @@ export function registerRedmineTool(
             size: attachment.filesize,
             author: attachment.author?.name ?? "Unknown",
             created_on: attachment.created_on,
+            content_type: attachment.content_type,
             content_url: attachment.content_url,
           }));
 
@@ -172,10 +170,7 @@ export function registerRedmineTool(
           `Description images: ${descriptionImages.length} | Other attachments: ${remainingAttachments.length}`,
         ];
 
-        const content: Array<
-          | { type: "text"; text: string }
-          | { type: "image"; data: string; mimeType: string }
-        > = [
+        const content: Array<{ type: "text"; text: string }> = [
           {
             type: "text",
             text: summaryLines.join("\n"),
@@ -188,14 +183,6 @@ export function registerRedmineTool(
             text: `Warning: Some description image references could not be resolved: ${matchResult.unresolved.join(
               ", "
             )}`,
-          });
-        }
-
-        for (const image of descriptionImages) {
-          content.push({
-            type: "image",
-            data: image.base64,
-            mimeType: "image/webp",
           });
         }
 

@@ -165,6 +165,7 @@ export interface RedmineIssue {
   start_date?: string | null;
   custom_fields?: RedmineCustomField[];
   attachments?: RedmineAttachment[];
+  journals?: RedmineJournal[];
 }
 
 export interface RedmineCustomField {
@@ -181,4 +182,19 @@ export interface RedmineAttachment {
   content_type?: string;
   author?: { id: number; name: string };
   created_on?: string;
+}
+
+export interface RedmineJournalDetail {
+  property: string;
+  name: string;
+  old_value: string | null;
+  new_value: string | null;
+}
+
+export interface RedmineJournal {
+  id: number;
+  user?: { id: number; name: string };
+  notes?: string;
+  created_on?: string;
+  details?: RedmineJournalDetail[];
 }

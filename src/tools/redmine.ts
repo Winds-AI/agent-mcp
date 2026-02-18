@@ -9,10 +9,11 @@ import {
   extractDescriptionImageHints,
   matchDescriptionAttachments,
   fetchRedmineIssue,
+  fetchIdNameMap,
+  resolveDetailDisplay,
   resolveRedmineImageCacheDir,
   cacheRedmineAttachmentLocally,
 } from "../lib/redmine-client.js";
-import { truncateText } from "../lib/formatting.js";
 import { extractRequestConfigFromToolExtra } from "../lib/request-config.js";
 
 export function registerRedmineTool(
@@ -56,12 +57,10 @@ export function registerRedmineTool(
         description_images: z.array(
           z.object({
             id: z.number(),
-            filename: z.string(),
             size: z.number(),
             author: z.string(),
             created_on: z.string().optional(),
             content_type: z.string().optional(),
-            content_url: z.string(),
             local_path: z.string().nullable(),
             cached: z.boolean(),
             download_error: z.string().nullable(),
@@ -70,12 +69,22 @@ export function registerRedmineTool(
         attachments: z.array(
           z.object({
             id: z.number(),
-            filename: z.string(),
             size: z.number(),
             author: z.string(),
             created_on: z.string().optional(),
             content_type: z.string().optional(),
-            content_url: z.string(),
+            local_path: z.string().nullable(),
+            cached: z.boolean(),
+            download_error: z.string().nullable(),
+          })
+        ),
+        journals: z.array(
+          z.object({
+            id: z.number(),
+            author: z.string(),
+            created_on: z.string().nullable(),
+            notes: z.string().nullable(),
+            details: z.array(z.string()),
           })
         ),
       },
@@ -103,12 +112,21 @@ export function registerRedmineTool(
           throw new Error("Issue ID is required.");
         }
 
-        const issue = await fetchRedmineIssue(
-          baseUrl,
-          apiKey,
-          normalizedIssueId
-        );
+        const [issue, statusMap, trackerMap, priorityMap] = await Promise.all([
+          fetchRedmineIssue(baseUrl, apiKey, normalizedIssueId),
+          fetchIdNameMap(`${baseUrl}/issue_statuses.json`, apiKey, "issue_statuses"),
+          fetchIdNameMap(`${baseUrl}/trackers.json`, apiKey, "trackers"),
+          fetchIdNameMap(`${baseUrl}/enumerations/issue_priorities.json`, apiKey, "issue_priorities"),
+        ]);
         ensureIssueProjectScope(issue, configuredProject);
+
+        const userMap = new Map<string, string>();
+        for (const journal of issue.journals ?? []) {
+          if (journal.user) {
+            userMap.set(String(journal.user.id), journal.user.name);
+          }
+        }
+        const lookups = { statuses: statusMap, trackers: trackerMap, priorities: priorityMap, users: userMap };
 
         const description = issue.description ?? "";
         const imageHints = extractDescriptionImageHints(description);
@@ -128,12 +146,11 @@ export function registerRedmineTool(
               );
               return {
                 id: attachment.id,
-                filename: attachment.filename,
                 size: attachment.filesize,
                 author: attachment.author?.name ?? "Unknown",
                 created_on: attachment.created_on,
                 content_type: attachment.content_type,
-                content_url: attachment.content_url,
+
                 local_path: cacheResult.localPath,
                 cached: cacheResult.cached,
                 download_error: null,
@@ -143,12 +160,11 @@ export function registerRedmineTool(
                 error instanceof Error ? error.message : String(error);
               return {
                 id: attachment.id,
-                filename: attachment.filename,
                 size: attachment.filesize,
                 author: attachment.author?.name ?? "Unknown",
                 created_on: attachment.created_on,
                 content_type: attachment.content_type,
-                content_url: attachment.content_url,
+
                 local_path: null,
                 cached: false,
                 download_error: errorMessage,
@@ -157,20 +173,50 @@ export function registerRedmineTool(
           })
         );
 
-        const remainingAttachments = (issue.attachments ?? [])
-          .filter(
-            (attachment) =>
-              !descriptionImages.some((image) => image.id === attachment.id)
-          )
-          .map((attachment) => ({
-            id: attachment.id,
-            filename: attachment.filename,
-            size: attachment.filesize,
-            author: attachment.author?.name ?? "Unknown",
-            created_on: attachment.created_on,
-            content_type: attachment.content_type,
-            content_url: attachment.content_url,
-          }));
+        const remainingAttachments = await Promise.all(
+          (issue.attachments ?? [])
+            .filter(
+              (attachment) =>
+                !descriptionImages.some((image) => image.id === attachment.id)
+            )
+            .map(async (attachment) => {
+              try {
+                const cacheResult = await cacheRedmineAttachmentLocally(
+                  attachment,
+                  apiKey,
+                  imageCacheDir,
+                  issue.id
+                );
+                return {
+                  id: attachment.id,
+                  filename: attachment.filename,
+                  size: attachment.filesize,
+                  author: attachment.author?.name ?? "Unknown",
+                  created_on: attachment.created_on,
+                  content_type: attachment.content_type,
+  
+                  local_path: cacheResult.localPath,
+                  cached: cacheResult.cached,
+                  download_error: null,
+                };
+              } catch (error) {
+                const errorMessage =
+                  error instanceof Error ? error.message : String(error);
+                return {
+                  id: attachment.id,
+                  filename: attachment.filename,
+                  size: attachment.filesize,
+                  author: attachment.author?.name ?? "Unknown",
+                  created_on: attachment.created_on,
+                  content_type: attachment.content_type,
+  
+                  local_path: null,
+                  cached: false,
+                  download_error: errorMessage,
+                };
+              }
+            })
+        );
 
         const coreIssue = {
           id: issue.id,
@@ -196,6 +242,14 @@ export function registerRedmineTool(
           ),
         };
 
+        const journals = (issue.journals ?? []).map((journal) => ({
+          id: journal.id,
+          author: journal.user?.name ?? "Unknown",
+          created_on: journal.created_on ?? null,
+          notes: journal.notes?.trim() || null,
+          details: (journal.details ?? []).map((d) => resolveDetailDisplay(d, lookups)),
+        }));
+
         const cachedImageCount = descriptionImages.filter(
           (image) => image.cached
         ).length;
@@ -203,53 +257,73 @@ export function registerRedmineTool(
           (image) => image.local_path === null
         );
 
-        const summaryLines = [
-          `Issue #${coreIssue.id}: ${coreIssue.subject}`,
-          `Project: ${coreIssue.project}`,
-          `Tracker: ${coreIssue.tracker} | Status: ${coreIssue.status} | Priority: ${coreIssue.priority}`,
-          `Author: ${coreIssue.author} | Assignee: ${coreIssue.assignee ?? "Unassigned"}`,
-          `Created: ${coreIssue.created_on} | Updated: ${coreIssue.updated_on}`,
-          `Start date: ${coreIssue.start_date ?? "None"}`,
-          `Severity: ${customFields.severity ?? "None"} | Screen Name: ${customFields.screen_name ?? "None"} | Testing Env: ${customFields.testing_environment ?? "None"}`,
-          `Description: ${truncateText(coreIssue.description.trim(), 500) || "None"}`,
-          `Description images: ${descriptionImages.length} (cached: ${cachedImageCount}, download failures: ${failedImageDownloads.length}) | Other attachments: ${remainingAttachments.length}`,
-        ];
+        const mdLines: string[] = [];
 
-        const content: Array<{ type: "text"; text: string }> = [
-          {
-            type: "text",
-            text: summaryLines.join("\n"),
-          },
-        ];
+        mdLines.push(`# Issue #${coreIssue.id} — ${coreIssue.subject}`);
+        mdLines.push("");
+        mdLines.push(`**Project:** ${coreIssue.project} | **Tracker:** ${coreIssue.tracker} | **Status:** ${coreIssue.status} | **Priority:** ${coreIssue.priority}`);
+        mdLines.push(`**Author:** ${coreIssue.author} | **Assignee:** ${coreIssue.assignee ?? "Unassigned"}`);
+
+        const dateParts = [`**Created:** ${coreIssue.created_on}`, `**Updated:** ${coreIssue.updated_on}`];
+        if (coreIssue.start_date) dateParts.push(`**Start:** ${coreIssue.start_date}`);
+        mdLines.push(dateParts.join(" | "));
+
+        const cfParts: string[] = [];
+        if (customFields.severity) cfParts.push(`**Severity:** ${customFields.severity}`);
+        if (customFields.screen_name) cfParts.push(`**Screen:** ${customFields.screen_name}`);
+        if (customFields.testing_environment) cfParts.push(`**Env:** ${customFields.testing_environment}`);
+        if (cfParts.length > 0) mdLines.push(cfParts.join(" | "));
 
         if (matchResult.unresolved.length > 0) {
-          content.push({
-            type: "text",
-            text: `Warning: Some description image references could not be resolved: ${matchResult.unresolved.join(
-              ", "
-            )}`,
-          });
+          mdLines.push(`> ⚠ Unresolved image refs: ${matchResult.unresolved.join(", ")}`);
         }
+
+        mdLines.push("");
+        mdLines.push("## Description");
+        mdLines.push("");
+        mdLines.push(coreIssue.description.trim() || "_No description._");
+
         if (descriptionImages.length > 0) {
-          const imagePathLines = descriptionImages.map((image, index) => {
-            if (image.local_path) {
-              return `${index + 1}. ${image.local_path}`;
+          mdLines.push("");
+          mdLines.push("## Description Images");
+          mdLines.push("");
+          for (const img of descriptionImages) {
+            const status = img.download_error ? `⚠ ${img.download_error}` : img.local_path ?? "unavailable";
+            mdLines.push(`- id:${img.id} | ${img.content_type ?? "unknown"} | ${img.size}b | ${img.author} | ${img.created_on ?? ""}`);
+            mdLines.push(`  \`${status}\``);
+          }
+        }
+
+        if (remainingAttachments.length > 0) {
+          mdLines.push("");
+          mdLines.push("## Attachments");
+          mdLines.push("");
+          for (const att of remainingAttachments) {
+            const status = att.download_error ? `⚠ ${att.download_error}` : att.local_path ?? "unavailable";
+            mdLines.push(`- id:${att.id} | ${att.content_type ?? "unknown"} | ${att.size}b | ${att.author} | ${att.created_on ?? ""}`);
+            mdLines.push(`  \`${status}\``);
+          }
+        }
+
+        if (journals.length > 0) {
+          mdLines.push("");
+          mdLines.push("## Journal");
+          for (const journal of journals) {
+            mdLines.push("");
+            mdLines.push(`**#${journal.id}** ${journal.author} · ${journal.created_on ?? ""}`);
+            for (const detail of journal.details) {
+              mdLines.push(`- ${detail}`);
             }
-            return `${index + 1}. [unavailable] ${image.filename}`;
-          });
-          content.push({
-            type: "text",
-            text: `Description image local paths:\n${imagePathLines.join("\n")}\nUse view_image with a local path to inspect image content.`,
-          });
+            if (journal.notes) {
+              mdLines.push("");
+              mdLines.push(`> ${journal.notes}`);
+            }
+          }
         }
-        if (failedImageDownloads.length > 0) {
-          content.push({
-            type: "text",
-            text: `Warning: Failed to cache some description images locally: ${failedImageDownloads
-              .map((image) => `${image.filename} (${image.download_error})`)
-              .join(", ")}`,
-          });
-        }
+
+        const content: Array<{ type: "text"; text: string }> = [
+          { type: "text", text: mdLines.join("\n") },
+        ];
 
         return {
           content,
@@ -258,6 +332,7 @@ export function registerRedmineTool(
             custom_fields: customFields,
             description_images: descriptionImages,
             attachments: remainingAttachments,
+            journals,
           },
         };
       } catch (error) {

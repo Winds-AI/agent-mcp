@@ -7,6 +7,7 @@ import type {
   RedmineIssueResponse,
   RedmineAttachment,
   RedmineCustomField,
+  RedmineJournalDetail,
 } from "./types.js";
 
 const DEFAULT_REDMINE_IMAGE_CACHE_DIR = "/tmp/remake-mcp/redmine-images";
@@ -217,13 +218,88 @@ export async function cacheRedmineAttachmentLocally(
   return { localPath, cached: false };
 }
 
+const ATTR_LABELS: Record<string, string> = {
+  status_id: "Status",
+  assigned_to_id: "Assignee",
+  tracker_id: "Tracker",
+  priority_id: "Priority",
+  subject: "Subject",
+  description: "Description",
+  done_ratio: "% Done",
+  estimated_hours: "Estimated hours",
+  start_date: "Start date",
+  due_date: "Due date",
+  category_id: "Category",
+  fixed_version_id: "Target version",
+  parent_id: "Parent task",
+  is_private: "Private",
+};
+
+export async function fetchIdNameMap(
+  url: string,
+  apiKey: string,
+  responseKey: string
+): Promise<Map<string, string>> {
+  try {
+    const response = await fetch(url, {
+      headers: { "X-Redmine-API-Key": apiKey },
+    });
+    if (!response.ok) return new Map();
+    const data = (await response.json()) as Record<
+      string,
+      Array<{ id: number; name: string }>
+    >;
+    const items = data[responseKey];
+    if (!Array.isArray(items)) return new Map();
+    return new Map(items.map((item) => [String(item.id), item.name]));
+  } catch {
+    return new Map();
+  }
+}
+
+export function resolveDetailDisplay(
+  detail: RedmineJournalDetail,
+  lookups: {
+    statuses: Map<string, string>;
+    trackers: Map<string, string>;
+    priorities: Map<string, string>;
+    users: Map<string, string>;
+  }
+): string {
+  if (detail.property === "attachment") {
+    return detail.new_value ? `File ${detail.new_value} added` : `File removed`;
+  }
+
+  if (detail.property === "attr") {
+    const label = ATTR_LABELS[detail.name] ?? detail.name;
+
+    const resolve = (val: string | null): string | null => {
+      if (val === null) return null;
+      if (detail.name === "status_id") return lookups.statuses.get(val) ?? val;
+      if (detail.name === "assigned_to_id") return lookups.users.get(val) ?? val;
+      if (detail.name === "tracker_id") return lookups.trackers.get(val) ?? val;
+      if (detail.name === "priority_id") return lookups.priorities.get(val) ?? val;
+      return val;
+    };
+
+    const oldResolved = resolve(detail.old_value);
+    const newResolved = resolve(detail.new_value);
+
+    if (oldResolved === null) return `${label} set to ${newResolved}`;
+    if (newResolved === null) return `${label} cleared (was ${oldResolved})`;
+    return `${label} changed from ${oldResolved} to ${newResolved}`;
+  }
+
+  return `${detail.property} ${detail.name}: ${detail.old_value ?? "—"} → ${detail.new_value ?? "—"}`;
+}
+
 export async function fetchRedmineIssue(
   baseUrl: string,
   apiKey: string,
   issueId: string
 ): Promise<RedmineIssue> {
   const response = await fetch(
-    `${baseUrl}/issues/${encodeURIComponent(issueId)}.json?include=attachments`,
+    `${baseUrl}/issues/${encodeURIComponent(issueId)}.json?include=attachments,journals`,
     {
       headers: {
         "X-Redmine-API-Key": apiKey,

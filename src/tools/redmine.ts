@@ -9,6 +9,8 @@ import {
   extractDescriptionImageHints,
   matchDescriptionAttachments,
   fetchRedmineIssue,
+  resolveRedmineImageCacheDir,
+  cacheRedmineAttachmentLocally,
 } from "../lib/redmine-client.js";
 import { truncateText } from "../lib/formatting.js";
 import { extractRequestConfigFromToolExtra } from "../lib/request-config.js";
@@ -24,7 +26,7 @@ export function registerRedmineTool(
     {
       title: "Get Redmine Issue",
       description:
-        "Fetch a Redmine issue by ID, scoped to the configured project. Returns core fields, selected custom fields, description image references, and remaining attachments.",
+        "Fetch a Redmine issue by ID, scoped to the configured project. Returns core fields, selected custom fields, description image references (including local cached paths), and remaining attachments.",
       inputSchema: {
         issueId: z
           .string()
@@ -60,6 +62,9 @@ export function registerRedmineTool(
             created_on: z.string().optional(),
             content_type: z.string().optional(),
             content_url: z.string(),
+            local_path: z.string().nullable(),
+            cached: z.boolean(),
+            download_error: z.string().nullable(),
           })
         ),
         attachments: z.array(
@@ -81,6 +86,9 @@ export function registerRedmineTool(
         const baseUrlRaw = cfg.redmineBaseUrl;
         const apiKey = cfg.redmineApiKey;
         const configuredProject = cfg.redmineProjectId;
+        const imageCacheDir = resolveRedmineImageCacheDir(
+          cfg.redmineImageCacheDir
+        );
 
         if (!baseUrlRaw || !apiKey || !configuredProject) {
           throw new Error(
@@ -109,15 +117,45 @@ export function registerRedmineTool(
           imageHints
         );
 
-        const descriptionImages = matchResult.matched.map((attachment) => ({
-          id: attachment.id,
-          filename: attachment.filename,
-          size: attachment.filesize,
-          author: attachment.author?.name ?? "Unknown",
-          created_on: attachment.created_on,
-          content_type: attachment.content_type,
-          content_url: attachment.content_url,
-        }));
+        const descriptionImages = await Promise.all(
+          matchResult.matched.map(async (attachment) => {
+            try {
+              const cacheResult = await cacheRedmineAttachmentLocally(
+                attachment,
+                apiKey,
+                imageCacheDir,
+                issue.id
+              );
+              return {
+                id: attachment.id,
+                filename: attachment.filename,
+                size: attachment.filesize,
+                author: attachment.author?.name ?? "Unknown",
+                created_on: attachment.created_on,
+                content_type: attachment.content_type,
+                content_url: attachment.content_url,
+                local_path: cacheResult.localPath,
+                cached: cacheResult.cached,
+                download_error: null,
+              };
+            } catch (error) {
+              const errorMessage =
+                error instanceof Error ? error.message : String(error);
+              return {
+                id: attachment.id,
+                filename: attachment.filename,
+                size: attachment.filesize,
+                author: attachment.author?.name ?? "Unknown",
+                created_on: attachment.created_on,
+                content_type: attachment.content_type,
+                content_url: attachment.content_url,
+                local_path: null,
+                cached: false,
+                download_error: errorMessage,
+              };
+            }
+          })
+        );
 
         const remainingAttachments = (issue.attachments ?? [])
           .filter(
@@ -158,6 +196,13 @@ export function registerRedmineTool(
           ),
         };
 
+        const cachedImageCount = descriptionImages.filter(
+          (image) => image.cached
+        ).length;
+        const failedImageDownloads = descriptionImages.filter(
+          (image) => image.local_path === null
+        );
+
         const summaryLines = [
           `Issue #${coreIssue.id}: ${coreIssue.subject}`,
           `Project: ${coreIssue.project}`,
@@ -167,7 +212,7 @@ export function registerRedmineTool(
           `Start date: ${coreIssue.start_date ?? "None"}`,
           `Severity: ${customFields.severity ?? "None"} | Screen Name: ${customFields.screen_name ?? "None"} | Testing Env: ${customFields.testing_environment ?? "None"}`,
           `Description: ${truncateText(coreIssue.description.trim(), 500) || "None"}`,
-          `Description images: ${descriptionImages.length} | Other attachments: ${remainingAttachments.length}`,
+          `Description images: ${descriptionImages.length} (cached: ${cachedImageCount}, download failures: ${failedImageDownloads.length}) | Other attachments: ${remainingAttachments.length}`,
         ];
 
         const content: Array<{ type: "text"; text: string }> = [
@@ -183,6 +228,26 @@ export function registerRedmineTool(
             text: `Warning: Some description image references could not be resolved: ${matchResult.unresolved.join(
               ", "
             )}`,
+          });
+        }
+        if (descriptionImages.length > 0) {
+          const imagePathLines = descriptionImages.map((image, index) => {
+            if (image.local_path) {
+              return `${index + 1}. ${image.local_path}`;
+            }
+            return `${index + 1}. [unavailable] ${image.filename}`;
+          });
+          content.push({
+            type: "text",
+            text: `Description image local paths:\n${imagePathLines.join("\n")}\nUse view_image with a local path to inspect image content.`,
+          });
+        }
+        if (failedImageDownloads.length > 0) {
+          content.push({
+            type: "text",
+            text: `Warning: Failed to cache some description images locally: ${failedImageDownloads
+              .map((image) => `${image.filename} (${image.download_error})`)
+              .join(", ")}`,
           });
         }
 

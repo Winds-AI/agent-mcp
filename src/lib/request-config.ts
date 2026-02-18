@@ -26,12 +26,16 @@ export function extractRequestConfigFromHeaders(
 
   const redmineProjectId =
     getHeader(headers, "REDMINE-PROJECT") ?? env.REDMINE_PROJECT;
+  const redmineImageCacheDir =
+    getHeader(headers, "REDMINE-IMAGE-CACHE-DIR") ??
+    env.REDMINE_IMAGE_CACHE_DIR;
 
   return {
     swaggerApiJson,
     redmineBaseUrl,
     redmineApiKey,
     redmineProjectId,
+    redmineImageCacheDir,
   };
 }
 
@@ -51,5 +55,7 @@ export function extractRequestConfigFromToolExtra(
     redmineBaseUrl: fromHeaders.redmineBaseUrl ?? defaults.redmineBaseUrl,
     redmineApiKey: fromHeaders.redmineApiKey ?? defaults.redmineApiKey,
     redmineProjectId: fromHeaders.redmineProjectId ?? defaults.redmineProjectId,
+    redmineImageCacheDir:
+      fromHeaders.redmineImageCacheDir ?? defaults.redmineImageCacheDir,
   };
 }

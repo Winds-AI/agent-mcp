@@ -13,6 +13,7 @@ export interface SessionConfig {
   redmineBaseUrl?: string;
   redmineApiKey?: string;
   redmineProjectId?: string;
+  redmineImageCacheDir?: string;
   swaggerApiJson?: string;
 }
 

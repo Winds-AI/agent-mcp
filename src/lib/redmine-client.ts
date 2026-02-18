@@ -1,5 +1,6 @@
 import path from "node:path";
-import sharp from "sharp";
+import { randomUUID } from "node:crypto";
+import { mkdir, rename, stat, unlink, writeFile } from "node:fs/promises";
 
 import type {
   RedmineIssue,
@@ -8,8 +9,7 @@ import type {
   RedmineCustomField,
 } from "./types.js";
 
-const REDMINE_IMAGE_MAX_DIMENSION = 1280;
-const REDMINE_IMAGE_WEBP_QUALITY = 78;
+const DEFAULT_REDMINE_IMAGE_CACHE_DIR = "/tmp/remake-mcp/redmine-images";
 
 export function normalizeBaseUrl(baseUrl: string): string {
   return baseUrl.replace(/\/+$/, "");
@@ -147,6 +147,76 @@ export function matchDescriptionAttachments(
   return { matched: Array.from(matched.values()), unresolved };
 }
 
+function sanitizeAttachmentFilename(filename: string): string {
+  const basename = path.basename(filename || "").replace(/\0/g, "").trim();
+  const safe = basename.replace(/[^a-zA-Z0-9._-]/g, "_");
+  return safe || "attachment";
+}
+
+export function resolveRedmineImageCacheDir(configuredDir?: string): string {
+  const raw = configuredDir?.trim();
+  if (!raw) {
+    return DEFAULT_REDMINE_IMAGE_CACHE_DIR;
+  }
+  return path.resolve(raw);
+}
+
+export interface CachedAttachmentResult {
+  localPath: string;
+  cached: boolean;
+}
+
+export async function cacheRedmineAttachmentLocally(
+  attachment: RedmineAttachment,
+  apiKey: string,
+  cacheRootDir: string,
+  issueId: number
+): Promise<CachedAttachmentResult> {
+  const issueDir = path.resolve(cacheRootDir, `issue-${issueId}`);
+  await mkdir(issueDir, { recursive: true });
+
+  const localFilename = `${attachment.id}_${sanitizeAttachmentFilename(attachment.filename)}`;
+  const localPath = path.resolve(issueDir, localFilename);
+
+  try {
+    const existing = await stat(localPath);
+    if (existing.isFile() && existing.size === attachment.filesize) {
+      return { localPath, cached: true };
+    }
+  } catch {
+    // Cache miss: continue and fetch attachment from Redmine.
+  }
+
+  const response = await fetch(attachment.content_url, {
+    headers: {
+      "X-Redmine-API-Key": apiKey,
+    },
+  });
+  if (!response.ok) {
+    throw new Error(
+      `Failed to fetch attachment ${attachment.filename}: HTTP ${response.status}`
+    );
+  }
+
+  const arrayBuffer = await response.arrayBuffer();
+  const fileBuffer = Buffer.from(arrayBuffer);
+  const tempPath = `${localPath}.tmp-${process.pid}-${randomUUID()}`;
+
+  try {
+    await writeFile(tempPath, fileBuffer);
+    await rename(tempPath, localPath);
+  } catch (error) {
+    try {
+      await unlink(tempPath);
+    } catch {
+      // Best-effort cleanup for temporary files.
+    }
+    throw error;
+  }
+
+  return { localPath, cached: false };
+}
+
 export async function fetchRedmineIssue(
   baseUrl: string,
   apiKey: string,
@@ -177,35 +247,4 @@ export async function fetchRedmineIssue(
   }
 
   return data.issue;
-}
-
-export async function fetchAndCompressAttachment(
-  attachment: RedmineAttachment,
-  apiKey: string
-): Promise<string> {
-  const response = await fetch(attachment.content_url, {
-    headers: {
-      "X-Redmine-API-Key": apiKey,
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error(
-      `Failed to fetch attachment ${attachment.filename}: HTTP ${response.status}`
-    );
-  }
-
-  const arrayBuffer = await response.arrayBuffer();
-  const buffer = Buffer.from(arrayBuffer);
-  const webpBuffer = await sharp(buffer)
-    .resize({
-      width: REDMINE_IMAGE_MAX_DIMENSION,
-      height: REDMINE_IMAGE_MAX_DIMENSION,
-      fit: "inside",
-      withoutEnlargement: true,
-    })
-    .webp({ quality: REDMINE_IMAGE_WEBP_QUALITY })
-    .toBuffer();
-
-  return webpBuffer.toString("base64");
 }

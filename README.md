@@ -56,6 +56,7 @@ Fetch Redmine issues with attachments and custom fields.
 - `REDMINE-URL`: Your Redmine instance URL
 - `REDMINE-API`: Your Redmine API key
 - `REDMINE-PROJECT`: Project ID to scope issues
+- `REDMINE-IMAGE-CACHE-DIR` (optional): Local directory where description images are cached for reuse
 
 ## 📡 API Endpoints
 
@@ -96,8 +97,9 @@ See [DEPLOYMENT.md](./DEPLOYMENT.md) for detailed guides.
 
 ### Environment Variables
 ```bash
-PORT=3100              # Server port (default: 3100)
-NODE_ENV=production    # Environment
+PORT=3100                           # Server port (default: 3100)
+NODE_ENV=production                 # Environment
+REDMINE_IMAGE_CACHE_DIR=/tmp/remake-mcp/redmine-images  # Optional Redmine image cache directory
 ```
 
 ### Per-Session Configuration (via HTTP headers)
@@ -105,6 +107,7 @@ NODE_ENV=production    # Environment
 REDMINE-API: <your-api-key>
 REDMINE-URL: https://redmine.example.com
 REDMINE-PROJECT: <project-id>
+REDMINE-IMAGE-CACHE-DIR: /tmp/remake-mcp/redmine-images
 OPENAPI-JSON: https://api.example.com/openapi.json
 ```
 
@@ -113,7 +116,6 @@ OPENAPI-JSON: https://api.example.com/openapi.json
 - `@modelcontextprotocol/sdk` - MCP protocol implementation
 - `express` - HTTP server
 - `cors` - CORS middleware
-- `sharp` - Image processing (for Redmine attachments)
 - `zod` - Schema validation
 
 ## 🐳 Docker

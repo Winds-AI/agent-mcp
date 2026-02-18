@@ -82,13 +82,11 @@ async function startStdioServer() {
 }
 
 async function main() {
-  const mode = (process.env.MCP_TRANSPORT || "http").toLowerCase();
-  if (mode === "stdio") {
+  if (process.argv.includes("--http")) {
+    startHttpServer();
+  } else {
     await startStdioServer();
-    return;
   }
-
-  startHttpServer();
 }
 
 main().catch((error) => {

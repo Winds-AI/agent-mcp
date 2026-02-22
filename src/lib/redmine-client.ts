@@ -1,6 +1,7 @@
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { mkdir, rename, stat, unlink, writeFile } from "node:fs/promises";
+import sharp from "sharp";
 
 import type {
   RedmineIssue,
@@ -11,6 +12,30 @@ import type {
 } from "./types.js";
 
 const DEFAULT_REDMINE_IMAGE_CACHE_DIR = "/tmp/remake-mcp/redmine-images";
+const IMAGE_COMPRESSION_THRESHOLD_BYTES = 2 * 1024 * 1024; // 2 MB
+const COMPRESSIBLE_IMAGE_TYPES = new Set([
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/webp",
+]);
+
+async function compressImageBuffer(
+  buffer: Buffer,
+  contentType: string
+): Promise<Buffer> {
+  const type = contentType.toLowerCase();
+  if (type.includes("jpeg") || type.includes("jpg")) {
+    return sharp(buffer).jpeg({ quality: 75 }).toBuffer();
+  }
+  if (type.includes("png")) {
+    return sharp(buffer).png({ compressionLevel: 9 }).toBuffer();
+  }
+  if (type.includes("webp")) {
+    return sharp(buffer).webp({ quality: 75 }).toBuffer();
+  }
+  return buffer;
+}
 
 export function normalizeBaseUrl(baseUrl: string): string {
   return baseUrl.replace(/\/+$/, "");
@@ -181,7 +206,7 @@ export async function cacheRedmineAttachmentLocally(
 
   try {
     const existing = await stat(localPath);
-    if (existing.isFile() && existing.size === attachment.filesize) {
+    if (existing.isFile()) {
       return { localPath, cached: true };
     }
   } catch {
@@ -200,7 +225,17 @@ export async function cacheRedmineAttachmentLocally(
   }
 
   const arrayBuffer = await response.arrayBuffer();
-  const fileBuffer = Buffer.from(arrayBuffer);
+  // eslint-disable-next-line prefer-const
+  let fileBuffer: Buffer<ArrayBufferLike> = Buffer.from(arrayBuffer);
+
+  const contentType = attachment.content_type ?? "";
+  if (
+    fileBuffer.byteLength > IMAGE_COMPRESSION_THRESHOLD_BYTES &&
+    COMPRESSIBLE_IMAGE_TYPES.has(contentType.toLowerCase())
+  ) {
+    fileBuffer = await compressImageBuffer(fileBuffer, contentType);
+  }
+
   const tempPath = `${localPath}.tmp-${process.pid}-${randomUUID()}`;
 
   try {

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
-import type { SessionConfig } from "../lib/types.js";
+import type { Config } from "../lib/config.js";
 import {
   normalizeBaseUrl,
   ensureIssueProjectScope,
@@ -14,14 +14,8 @@ import {
   resolveRedmineImageCacheDir,
   cacheRedmineAttachmentLocally,
 } from "../lib/redmine-client.js";
-import { extractRequestConfigFromToolExtra } from "../lib/request-config.js";
 
-export function registerRedmineTool(
-  server: McpServer,
-  config: SessionConfig
-) {
-  const defaults = config;
-
+export function registerRedmineTool(server: McpServer, config: Config) {
   server.registerTool(
     "redmine_getIssue",
     {
@@ -89,15 +83,10 @@ export function registerRedmineTool(
         ),
       },
     },
-    async ({ issueId }, extra) => {
+    async ({ issueId }) => {
       try {
-        const cfg = extractRequestConfigFromToolExtra(extra, defaults);
-        const baseUrlRaw = cfg.redmineBaseUrl;
-        const apiKey = cfg.redmineApiKey;
-        const configuredProject = cfg.redmineProjectId;
-        const imageCacheDir = resolveRedmineImageCacheDir(
-          cfg.redmineImageCacheDir
-        );
+        const { redmineBaseUrl: baseUrlRaw, redmineApiKey: apiKey, redmineProjectId: configuredProject } = config;
+        const imageCacheDir = resolveRedmineImageCacheDir(config.redmineImageCacheDir);
 
         if (!baseUrlRaw || !apiKey || !configuredProject) {
           throw new Error(

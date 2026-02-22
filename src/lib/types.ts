@@ -9,14 +9,6 @@ export const HTTP_METHODS = [
   "trace",
 ] as const;
 
-export interface SessionConfig {
-  redmineBaseUrl?: string;
-  redmineApiKey?: string;
-  redmineProjectId?: string;
-  redmineImageCacheDir?: string;
-  swaggerApiJson?: string;
-}
-
 export interface SwaggerOperation {
   summary?: string;
   description?: string;

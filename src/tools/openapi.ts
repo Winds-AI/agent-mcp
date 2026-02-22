@@ -1,13 +1,10 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
-import type { SessionConfig, ParameterSchemaSummary } from "../lib/types.js";
-import {
-  createSwaggerLoader,
-  collectPathMatches,
-} from "../lib/swagger-parser.js";
+import type { Config } from "../lib/config.js";
+import type { ParameterSchemaSummary } from "../lib/types.js";
+import { createSwaggerLoader, collectPathMatches } from "../lib/swagger-parser.js";
 import { formatSearchResultAsMarkdown } from "../lib/formatting.js";
-import { extractRequestConfigFromToolExtra } from "../lib/request-config.js";
 
 const OPENAPI_SEARCH_ENDPOINTS_DESCRIPTION =
   'Default discovery tool for API related tasks. Trigger: when a request mentions "API integration", "changes in API logic/response", "correct field names", or "validations." Searches through OpenAPI JSON of the backend and consults a per-project integration guide at PROJECT_INTEGRATION_GUIDE to infer stack and code patterns (routing, data fetching, forms, file layout, auth). Returns canonical operations (path, method, operationId, parameters, requestBody schemas, response schemas, examples) plus integrationHints derived from the guide (e.g., where to place services/hooks, file/alias conventions, preferred validation). Use the results to make real requests via .agent/api.sh and generate project-conformant code that follows the code patterns and structure of the current repo.';
@@ -49,11 +46,7 @@ const responseContentSummaryZod = z.object({
   examples: z.record(z.unknown()).optional(),
 });
 
-export function registerOpenApiTool(
-  server: McpServer,
-  config: SessionConfig
-) {
-  const defaults = config;
+export function registerOpenApiTool(server: McpServer, config: Config) {
   const loaders = new Map<string, ReturnType<typeof createSwaggerLoader>>();
 
   server.registerTool(
@@ -137,10 +130,9 @@ export function registerOpenApiTool(
         ),
       },
     },
-    async ({ path: pathFilter }, extra) => {
+    async ({ path: pathFilter }) => {
       try {
-        const cfg = extractRequestConfigFromToolExtra(extra, defaults);
-        const swaggerUrl = cfg.swaggerApiJson;
+        const swaggerUrl = config.openApiJson;
         if (!swaggerUrl) {
           throw new Error(
             "Missing OpenAPI URL. Provide OPENAPI_JSON or configure OPENAPI_JSON on the server."
